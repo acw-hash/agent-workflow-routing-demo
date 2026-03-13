@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from urllib.parse import quote, urlparse
 
 import httpx
 from azure.identity.aio import DefaultAzureCredential
@@ -63,6 +64,69 @@ class FoundryWorkflowClient:
                 seen.add(endpoint)
 
         return deduped
+
+    def _workflow_base_endpoint(self) -> str:
+        if self._settings.foundry_workflow_base_endpoint:
+            return self._settings.foundry_workflow_base_endpoint.rstrip("/")
+
+        project_endpoint = self._project_endpoint()
+        if not project_endpoint:
+            return ""
+
+        parsed = urlparse(project_endpoint)
+        if not parsed.scheme or not parsed.netloc:
+            return ""
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def _workflow_workspace_name(self) -> str:
+        if self._settings.foundry_workspace_name:
+            return self._settings.foundry_workspace_name.strip()
+        return self._settings.foundry_project_name.strip()
+
+    def _workflow_run_api_version(self) -> str:
+        if self._settings.foundry_workflow_run_api_version:
+            return self._settings.foundry_workflow_run_api_version.strip()
+        return self._settings.foundry_workflow_api_version.strip()
+
+    def _workflow_id(self) -> str:
+        if self._settings.foundry_workflow_id:
+            return self._settings.foundry_workflow_id.strip()
+        return self._settings.foundry_workflow_name.strip()
+
+    def _workflow_runs_collection_endpoint(self, thread_id: str) -> str:
+        base = self._workflow_base_endpoint()
+        subscription_id = self._settings.foundry_subscription_id.strip()
+        resource_group = self._settings.foundry_resource_group.strip()
+        workspace = self._workflow_workspace_name()
+        api_version = self._workflow_run_api_version()
+
+        if not all([base, subscription_id, resource_group, workspace, api_version]):
+            return ""
+
+        return (
+            f"{base}/workflows/v1.0/subscriptions/{quote(subscription_id, safe='')}/"
+            f"resourceGroups/{quote(resource_group, safe='')}/providers/"
+            f"Microsoft.MachineLearningServices/workspaces/{quote(workspace, safe='')}/"
+            f"threads/{quote(thread_id, safe='')}/runs?api-version={quote(api_version, safe='')}"
+        )
+
+    def _workflow_runs_ready(self) -> bool:
+        return all(
+            [
+                self._project_endpoint(),
+                self._workflow_id(),
+                self._workflow_base_endpoint(),
+                self._settings.foundry_subscription_id.strip(),
+                self._settings.foundry_resource_group.strip(),
+                self._workflow_workspace_name(),
+                self._workflow_run_api_version(),
+            ]
+        )
+
+    @staticmethod
+    def _workflow_run_status(status_payload: dict[str, Any]) -> str:
+        status = status_payload.get("status")
+        return status.lower().strip() if isinstance(status, str) else ""
 
     async def _request_json(
         self,
@@ -243,6 +307,132 @@ class FoundryWorkflowClient:
 
         raise RuntimeError("No assistant response text was returned.")
 
+    async def _invoke_workflow_runs_api(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        user_query: str,
+        session_id: str,
+        history: list[dict[str, str]],
+        request_id: str,
+    ) -> FoundryReply:
+        project_endpoint = self._project_endpoint()
+        workflow_id = self._workflow_id()
+        if not project_endpoint:
+            raise RuntimeError("Foundry project endpoint is not configured.")
+        if not workflow_id:
+            raise RuntimeError("Foundry workflow name/id is not configured.")
+
+        thread = await self._request_json(
+            client,
+            "POST",
+            f"{project_endpoint}/threads?api-version={self._assistants_api_version}",
+            headers,
+            {},
+        )
+        thread_id = thread.get("id", "")
+        if not thread_id:
+            raise RuntimeError("Workflow runs API did not return a thread id.")
+
+        if history:
+            # Seed recent history before appending the latest user query.
+            for item in history[-8:]:
+                role = item.get("role")
+                content = item.get("content", "")
+                if role not in {"user", "assistant"} or not isinstance(content, str) or not content.strip():
+                    continue
+                await self._request_json(
+                    client,
+                    "POST",
+                    f"{project_endpoint}/threads/{thread_id}/messages?api-version={self._assistants_api_version}",
+                    headers,
+                    {"role": role, "content": content.strip()},
+                )
+
+        await self._request_json(
+            client,
+            "POST",
+            f"{project_endpoint}/threads/{thread_id}/messages?api-version={self._assistants_api_version}",
+            headers,
+            {"role": "user", "content": user_query},
+        )
+
+        runs_endpoint = self._workflow_runs_collection_endpoint(thread_id)
+        if not runs_endpoint:
+            raise RuntimeError(
+                "Workflow runs API is missing configuration. "
+                "Expected workflow base endpoint, subscription id, resource group, workspace name, and api version."
+            )
+
+        logger.info(
+            "Attempting workflow runs API request_id=%s session_id=%s workflow_id=%s endpoint=%s",
+            request_id,
+            session_id,
+            workflow_id,
+            runs_endpoint,
+        )
+
+        run = await self._request_json(
+            client,
+            "POST",
+            runs_endpoint,
+            headers,
+            {"assistant_id": workflow_id},
+        )
+
+        run_id = run.get("id", "")
+        if not run_id:
+            raise RuntimeError("Workflow runs API did not return a run id.")
+
+        current_status_payload = run
+        for _ in range(45):
+            status = self._workflow_run_status(current_status_payload)
+            if status in {"completed", "succeeded"}:
+                break
+            if status in {"failed", "cancelled", "expired", "error"}:
+                raise RuntimeError(f"Workflow run failed with status: {status}")
+
+            current_status_payload = await self._request_json(
+                client,
+                "GET",
+                f"{runs_endpoint.split('?')[0]}/{quote(run_id, safe='')}?api-version={quote(self._workflow_run_api_version(), safe='')}",
+                headers,
+            )
+            await asyncio.sleep(2)
+        else:
+            raise RuntimeError("Workflow run timed out.")
+
+        messages = await self._request_json(
+            client,
+            "GET",
+            f"{project_endpoint}/threads/{thread_id}/messages?api-version={self._assistants_api_version}",
+            headers,
+        )
+        for item in messages.get("data", []):
+            if item.get("role") != "assistant":
+                continue
+            text = self._assistant_message_text(item)
+            if text:
+                logger.info(
+                    "Workflow runs API completed request_id=%s session_id=%s workflow_id=%s thread_id=%s run_id=%s",
+                    request_id,
+                    session_id,
+                    workflow_id,
+                    thread_id,
+                    run_id,
+                )
+                return FoundryReply(
+                    text=text,
+                    raw={
+                        "mode": "workflow-runs-api",
+                        "workflow_id": workflow_id,
+                        "thread_id": thread_id,
+                        "run_id": run_id,
+                    },
+                )
+
+        raise RuntimeError("Workflow run completed but no assistant response text was returned.")
+
     async def _invoke_agent_bridge(
         self,
         user_query: str,
@@ -330,11 +520,12 @@ class FoundryWorkflowClient:
             },
         )
 
-    async def _build_headers(self) -> dict[str, str]:
+    async def _build_headers(self, scope: str | None = None) -> dict[str, str]:
         if self._settings.foundry_api_key:
             return {"api-key": self._settings.foundry_api_key}
 
-        token = await self._credential.get_token(self._settings.foundry_scope)
+        requested_scope = (scope or self._settings.foundry_scope).strip()
+        token = await self._credential.get_token(requested_scope)
         return {"Authorization": f"Bearer {token.token}"}
 
     async def close(self) -> None:
@@ -360,6 +551,38 @@ class FoundryWorkflowClient:
             len(candidate_endpoints),
             bool(self._project_endpoint()),
         )
+
+        timeout = httpx.Timeout(self._settings.foundry_timeout_seconds)
+        if self._workflow_runs_ready():
+            workflow_scope = (self._settings.foundry_workflow_scope or self._settings.foundry_scope).strip()
+            try:
+                workflow_headers = await self._build_headers(scope=workflow_scope)
+                workflow_headers["Content-Type"] = "application/json"
+                workflow_headers["x-request-id"] = request_id
+
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    return await self._invoke_workflow_runs_api(
+                        client=client,
+                        headers=workflow_headers,
+                        user_query=user_query,
+                        session_id=session_id,
+                        history=history,
+                        request_id=request_id,
+                    )
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.warning(
+                    "Workflow runs API attempt failed; continuing with existing failover request_id=%s session_id=%s error=%s",
+                    request_id,
+                    session_id,
+                    exc,
+                )
+        else:
+            logger.info(
+                "Workflow runs API is not fully configured; continuing with existing failover request_id=%s session_id=%s",
+                request_id,
+                session_id,
+            )
+
         if not candidate_endpoints and self._project_endpoint():
             logger.info(
                 "No workflow endpoints resolved; falling back to assistant bridge request_id=%s session_id=%s",
@@ -390,7 +613,6 @@ class FoundryWorkflowClient:
             }
         }
 
-        timeout = httpx.Timeout(self._settings.foundry_timeout_seconds)
         last_error: str | None = None
         async with httpx.AsyncClient(timeout=timeout) as client:
             for endpoint in candidate_endpoints:

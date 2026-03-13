@@ -312,12 +312,42 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: foundryWorkflowName
             }
             {
+              name: 'FOUNDRY_WORKFLOW_ID'
+              value: foundryWorkflowName
+            }
+            {
               name: 'FOUNDRY_WORKFLOW_ENDPOINT'
               value: foundryWorkflowEndpoint
             }
             {
               name: 'FOUNDRY_WORKFLOW_API_VERSION'
               value: foundryWorkflowApiVersion
+            }
+            {
+              name: 'FOUNDRY_WORKFLOW_BASE_ENDPOINT'
+              value: empty(foundryResourceName)
+                ? ''
+                : 'https://${foundryResourceName}.services.ai.azure.com'
+            }
+            {
+              name: 'FOUNDRY_WORKFLOW_RUN_API_VERSION'
+              value: foundryWorkflowApiVersion
+            }
+            {
+              name: 'FOUNDRY_WORKFLOW_SCOPE'
+              value: 'https://ml.azure.com/.default'
+            }
+            {
+              name: 'FOUNDRY_SUBSCRIPTION_ID'
+              value: subscription().subscriptionId
+            }
+            {
+              name: 'FOUNDRY_RESOURCE_GROUP'
+              value: resourceGroup().name
+            }
+            {
+              name: 'FOUNDRY_WORKSPACE_NAME'
+              value: foundryProjectName
             }
             {
               name: 'FOUNDRY_SCOPE'

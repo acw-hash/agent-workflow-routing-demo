@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "18432855809988489148"
+      "templateHash": "9307498717516873971"
     }
   },
   "parameters": {
@@ -394,12 +394,40 @@
                   "value": "[parameters('foundryWorkflowName')]"
                 },
                 {
+                  "name": "FOUNDRY_WORKFLOW_ID",
+                  "value": "[parameters('foundryWorkflowName')]"
+                },
+                {
                   "name": "FOUNDRY_WORKFLOW_ENDPOINT",
                   "value": "[parameters('foundryWorkflowEndpoint')]"
                 },
                 {
                   "name": "FOUNDRY_WORKFLOW_API_VERSION",
                   "value": "[parameters('foundryWorkflowApiVersion')]"
+                },
+                {
+                  "name": "FOUNDRY_WORKFLOW_BASE_ENDPOINT",
+                  "value": "[if(empty(parameters('foundryResourceName')), '', format('https://{0}.services.ai.azure.com', parameters('foundryResourceName')))]"
+                },
+                {
+                  "name": "FOUNDRY_WORKFLOW_RUN_API_VERSION",
+                  "value": "[parameters('foundryWorkflowApiVersion')]"
+                },
+                {
+                  "name": "FOUNDRY_WORKFLOW_SCOPE",
+                  "value": "https://ml.azure.com/.default"
+                },
+                {
+                  "name": "FOUNDRY_SUBSCRIPTION_ID",
+                  "value": "[subscription().subscriptionId]"
+                },
+                {
+                  "name": "FOUNDRY_RESOURCE_GROUP",
+                  "value": "[resourceGroup().name]"
+                },
+                {
+                  "name": "FOUNDRY_WORKSPACE_NAME",
+                  "value": "[parameters('foundryProjectName')]"
                 },
                 {
                   "name": "FOUNDRY_SCOPE",

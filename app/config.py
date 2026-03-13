@@ -27,8 +27,15 @@ class Settings(BaseSettings):
     foundry_project_name: str = ""
     foundry_resource_name: str = ""
     foundry_workflow_name: str = ""
+    foundry_workflow_id: str = ""
     foundry_workflow_endpoint: str = ""
     foundry_workflow_api_version: str = "2025-11-15-preview"
+    foundry_workflow_base_endpoint: str = ""
+    foundry_workflow_run_api_version: str = ""
+    foundry_workflow_scope: str = "https://ml.azure.com/.default"
+    foundry_subscription_id: str = ""
+    foundry_resource_group: str = ""
+    foundry_workspace_name: str = ""
     foundry_scope: str = "https://ai.azure.com/.default"
     foundry_api_key: Optional[str] = None
     foundry_timeout_seconds: int = 30

@@ -65,7 +65,8 @@ A FastAPI chatbot that routes bank-policy questions (fraud, refunds/disputes, ca
   - `AcrPull` for image pulls from ACR
   - Cosmos DB built-in data contributor role for data plane access
 - If your Foundry workflow requires explicit RBAC, grant the app identity access to your Foundry project/endpoint.
-- If direct workflow invoke routes are unavailable, the backend uses an assistant bridge that executes `routing-agent` and the selected domain agent (`fraud-agent`, `refunds-agent`, or `card-services-agent`) using your Foundry project definitions.
+- The backend attempts workflow execution using Foundry workflow run APIs first (thread + run). If that fails, it preserves failover behavior: direct workflow endpoint patterns are attempted, and then assistant bridge executes `routing-agent` plus the selected domain agent (`fraud-agent`, `refunds-agent`, or `card-services-agent`).
+- For workflow-run execution, you can set `FOUNDRY_WORKFLOW_ID` to the deployed workflow ID (recommended when multiple similarly named deployments exist). If omitted, `FOUNDRY_WORKFLOW_NAME` is used.
 
 ## Test
 
