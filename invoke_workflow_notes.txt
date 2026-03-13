@@ -1,0 +1,245 @@
+Callouts: 
+
+Agents and Workflows: Agents are declared in *.agent file and workflows are declared in *.fdl file 
+
+Workflow: Workflow has .fdl file.  
+
+It has nodes, which are the agents themselves. By default, the agents are referred to by the nodes[].id which is the agent name. However, if multiple agents with same name exists (which would happen if deploy was run multiple times), it is better to specify nodes[].agent.id to point to agent id, which is guaranteed to be unique at all times.  
+
+It has orchestration, which is how the control should flow between agents using events. Here is where input and output flow from one agent to another is specified as well.  
+
+There are 2 names for how data is stored. The term variables are only for workflows. Agent ‘has’ output and workflow ‘has’ variables. 
+
+In orchestration,  
+
+there are Listen_for which can be thought of as event-listener declarations. These events can be standard system defined or it can be agent defined events.  
+
+Each event-listener declaration can be one of multiple types. Type can be update  or emit or node_invocation 
+
+Update when agent output needs to be updated to workflow variable.  
+
+Emit when an event is to fired. 
+
+node_invocation when another node/ agent should be invoked. 
+
+ 
+
+Samples:  
+
+ 
+
+Workflow playground: We create agent and workflows in vcode; connect to Foundry project; deploy both agents and workflow to Foundry. Agents can be found in the Foundry project. The workflows will not visible there. Correspondingly, there is no playground for workflow in Foundry. The vscode extension allows for workflow playground in vscode itself.  
+
+Deploy agent and workflow: There is a file called deploy.sh that has the logic on deploying both agents as well as workflows.  
+
+Deploy.sh works such that it uses the file extension to discriminate between agent and workflow. If the ID field in the agent or workflow file is not specified, it creates, else updates the existing one locating by specified id.  
+
+It’s good to prevent multiple copies of same agent getting deployed as agent deletion in Foundry is tedious (one by one) and workflow deletion is not possible.  
+
+Connect Workflow to Foundry: Clicking on connect with the new SDK has the widget to connect to the subscription and the Azure foundry project.  
+
+Workflow Inference:  
+
+Workflow cannot be invoked from Foundry UI or any other SDK. These can be invoked using REST API calls. Work in progress.  
+
+ 
+
+REST API details for workflow invocation: 
+
+# Note: az login is required before you run this script 
+# This code show how to run a deployed workflow 
+
+  
+
+# Imports 
+import os 
+import requests 
+import time 
+import json 
+
+  
+
+from azure.ai.projects import AIProjectClient 
+from azure.identity import DefaultAzureCredential 
+
+  
+
+from dotenv import load_dotenv   
+ 
+# Load .env file   
+load_dotenv()   
+
+  
+
+# This part can be updated 
+workflow_id = '<deployed-workflow-id>' # Deployed workflow ID from .fdl 
+# workflow_id = '<alternate-deployed-workflow-id>' 
+text_file_path = '..//content_samples//AI for sustainability.txt' # Read text content to be sent to the workflow 
+
+  
+
+# Static 
+token_resource_url = 'https://ml.azure.com/' 
+
+  
+
+# Fetch environment variables 
+PROJECT_CONNECTION_STRING = os.getenv("PROJECT_CONNECTION_STRING") 
+SUBSCRIPTION_ID = os.getenv("SUBSCRIPTION_ID") 
+RESOURCE_GROUP = os.getenv("RESOURCE_GROUP") 
+WORKFLOW_API_VERSION = os.getenv("WORKFLOW_API_VERSION") 
+WORKFLOW_BASE_ENDPOINT = os.getenv("WORKFLOW_BASE_ENDPOINT") 
+AI_FOUNDRY_PROJECT = os.getenv("AI_FOUNDRY_PROJECT") 
+
+  
+
+# Use DefaultAzureCredential to get a token, az login is required *(user or service principal) 
+credential = DefaultAzureCredential() 
+token = credential.get_token(token_resource_url + "/.default") 
+# print(f'token: {token.token}') 
+
+  
+
+# Project client 
+project_client = AIProjectClient.from_connection_string( 
+    credential=credential,  
+    conn_str=PROJECT_CONNECTION_STRING 
+) 
+
+  
+
+# Read text content from file  
+with open(text_file_path, 'r') as file:   
+    # Read the contents of the file   
+    user_content = file.read()  
+    # print(f'user_content: {user_content}') 
+
+  
+
+  
+
+with project_client: 
+
+  
+
+    print(f'Running workflow: {workflow_id}') 
+
+  
+
+    # Create thread 
+    thread = project_client.agents.create_thread() 
+    print(f"Thread created: {thread.id}") 
+
+  
+
+     # Create a message 
+    message = project_client.agents.create_message( 
+        thread_id=thread.id, 
+        role="user", 
+        content=user_content 
+        ) 
+    print(f"Message created: {message.id}") 
+
+  
+
+    # Requires thread id 
+    workflow_create_run_api_endpoint = f'{WORKFLOW_BASE_ENDPOINT}/workflows/v1.0/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/{RESOURCE_GROUP}/providers/Microsoft.MachineLearningServices/workspaces/{AI_FOUNDRY_PROJECT}/threads/{thread.id}/runs?api-version={WORKFLOW_API_VERSION}' 
+    # print(f'workflow_create_run_api_endpoint: {workflow_create_run_api_endpoint}') 
+
+  
+
+    # Add the token to the Authorization header   
+    headers = {   
+        "Authorization": f"Bearer {token.token}",   
+        "Content-Type": "application/json"   
+    } 
+
+  
+
+    # Data   
+    data = {   
+        "assistant_id": workflow_id   
+    } 
+
+  
+
+    # Make a request 
+    response = requests.post(workflow_create_run_api_endpoint, headers=headers, json=data)   
+ 
+    # Print the response   
+    # print("Status Code:", response.status_code)   
+    # print("Response Body:", response.json()) 
+ 
+    # Check if the start run request was successful   
+    if response.status_code == 200:   
+
+  
+
+        print(f'Workflow {workflow_id} started successfully') 
+        # Extract the status from the response JSON   
+        status = response.json().get('status')  
+        run_id = response.json().get('id')   
+
+  
+
+        # Requires thread id and run id 
+        workflow_retrieve_run_api_endpoint = f'{WORKFLOW_BASE_ENDPOINT}/workflows/v1.0/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/{RESOURCE_GROUP}/providers/Microsoft.MachineLearningServices/workspaces/{AI_FOUNDRY_PROJECT}/threads/{thread.id}/runs/{run_id}?api-version={WORKFLOW_API_VERSION}' 
+        # print(f'workflow_retrieve_run_api_endpoint: {workflow_retrieve_run_api_endpoint}') 
+ 
+        check_interval = 5 # seconds 
+        # Keep checking until the status changes to 'completed'   
+        while status == 'in_progress':   
+            print(f"Workflow is still running, checking again in a few seconds...")   
+ 
+            # Wait for a few seconds before checking again   
+            time.sleep(check_interval)   
+ 
+            # Retrieve run  
+            get_run_response = requests.get(workflow_retrieve_run_api_endpoint, headers=headers) 
+            # Print the response   
+            # print("get_run_response Status Code:", get_run_response.status_code)   
+            # print("get_run_response Body:", get_run_response.json())  
+ 
+            # Check if the new request is successful   
+            if get_run_response.status_code == 200:   
+                status = get_run_response.json().get('status')  
+                # print('status:', status)  
+            else:   
+                print(f"Failed to fetch status. HTTP Status Code: {response.status_code}")   
+                break   
+ 
+        # Handle the final status   
+        if status == 'completed':   
+            print(f"Workflow {workflow_id} completed!")   
+
+  
+
+            # Get workflow i.e. thread output 
+ 
+            # Get messages from the thread 
+            messages = project_client.agents.list_messages(thread_id=thread.id) 
+            # print(f"Messages: {messages}") 
+
+  
+
+            # Get the last message from the sender 
+            last_msg = messages.get_last_text_message_by_role("assistant") 
+            if last_msg: 
+                # print(f"Last Message: {last_msg.text.value}") 
+
+  
+
+                last_msg_json = json.loads(last_msg.text.value) 
+ 
+                # Check if Oversight agent final run was successful 
+                if last_msg_json["status"].replace('[','').replace(']','').upper() == '[COMPLETED]'.replace('[','').replace(']','').upper(): 
+                    print(f'Agent assessment output:\n{json.dumps(last_msg_json, indent=4)}') 
+                else: 
+                    print(f'last_msg_json["status"] was not [COMPLETED], it was {last_msg_json["status"]}') 
+
+  
+
+        else:   
+            print(f"Workflow status is now '{status}'. Exiting the loop.")   
+    else:   
+        print(f"Failed to start the workflow {workflow_id}. HTTP Status Code: {response.status_code}") 

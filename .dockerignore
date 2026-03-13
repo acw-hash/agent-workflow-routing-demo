@@ -1,0 +1,12 @@
+.git
+.gitignore
+.venv
+__pycache__
+.pytest_cache
+.env
+infra/bicep/parameters.dev.json
+*.pyc
+*.pyo
+*.pyd
+.vscode
+infra/scripts/*.log

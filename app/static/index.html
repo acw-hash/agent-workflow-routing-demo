@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alec's Bank Policy Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f6f4ef;
+        --panel: #fffaf0;
+        --ink: #1a1816;
+        --muted: #5c5750;
+        --accent: #005c3c;
+        --accent-soft: #d5eedf;
+        --line: #d9d2c5;
+        --danger: #9f1f1f;
+        --shadow: 0 20px 50px rgba(26, 24, 22, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        background:
+          radial-gradient(circle at 10% 10%, #c8e8ff 0, transparent 45%),
+          radial-gradient(circle at 90% 20%, #e8d9a5 0, transparent 35%),
+          linear-gradient(155deg, #f6f4ef 0%, #ece6d7 100%);
+        color: var(--ink);
+        min-height: 100vh;
+      }
+
+      .page {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 20px;
+        animation: rise 0.55s ease;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.6rem, 2.5vw, 2.6rem);
+        letter-spacing: -0.02em;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .status {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .status-left {
+        display: grid;
+        gap: 2px;
+      }
+
+      .mono {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.85rem;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: #0f3929;
+        font-size: 0.8rem;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      .messages {
+        height: min(58vh, 560px);
+        overflow-y: auto;
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+        background: linear-gradient(180deg, #fffdf8 0%, #f9f4eb 100%);
+      }
+
+      .bubble {
+        max-width: 86%;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 10px 12px;
+        line-height: 1.35;
+        animation: slideIn 0.25s ease;
+      }
+
+      .bubble.user {
+        margin-left: auto;
+        background: #ecf8ff;
+        border-color: #bfd8e7;
+      }
+
+      .bubble.assistant {
+        margin-right: auto;
+        background: #fff;
+      }
+
+      .meta {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 0.75rem;
+      }
+
+      .composer {
+        padding: 12px;
+        border-top: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+
+      .composer textarea {
+        width: 100%;
+        resize: vertical;
+        min-height: 52px;
+        max-height: 160px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+        font: inherit;
+        background: #fffcf5;
+      }
+
+      button {
+        border: none;
+        border-radius: 12px;
+        padding: 10px 14px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        background: #ece7dc;
+        color: var(--ink);
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .error {
+        color: var(--danger);
+        font-size: 0.9rem;
+        margin: 0;
+        padding: 0 16px 10px;
+      }
+
+      @keyframes rise {
+        from {
+          transform: translateY(8px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 720px) {
+        .status {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .composer {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <h1>Bank Policy Assistant</h1>
+        <p class="subtitle">
+          Ask about fraud, refunds/disputes, and card services. Responses are routed to policy-aware Foundry workflows.
+        </p>
+      </header>
+
+      <section class="panel">
+        <div class="status">
+          <div class="status-left">
+            <span class="badge"><span class="dot"></span><span id="auth-mode">Loading...</span></span>
+            <span id="session-id" class="mono">Session: not started</span>
+          </div>
+          <div>
+            <button id="login-btn" class="secondary">Sign In</button>
+            <button id="new-session-btn" class="secondary">New Session</button>
+          </div>
+        </div>
+
+        <div id="messages" class="messages"></div>
+
+        <p id="error" class="error"></p>
+
+        <form id="chat-form" class="composer">
+          <textarea id="message-input" placeholder="Example: I have an unauthorized charge from yesterday"></textarea>
+          <button id="send-btn" type="submit">Send</button>
+        </form>
+      </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.39.0/lib/msal-browser.min.js"></script>
+    <script>
+      const state = {
+        config: null,
+        msal: null,
+        account: null,
+        idToken: null,
+        sessionId: null,
+      };
+
+      const LOGIN_SCOPES = ["openid", "profile", "email"];
+
+      const authModeEl = document.getElementById("auth-mode");
+      const sessionIdEl = document.getElementById("session-id");
+      const messagesEl = document.getElementById("messages");
+      const errorEl = document.getElementById("error");
+      const loginBtn = document.getElementById("login-btn");
+      const newSessionBtn = document.getElementById("new-session-btn");
+      const sendBtn = document.getElementById("send-btn");
+      const messageInput = document.getElementById("message-input");
+
+      function addMessage(role, text, meta = "") {
+        const wrapper = document.createElement("div");
+        wrapper.className = `bubble ${role}`;
+        const content = document.createElement("div");
+        content.textContent = text;
+        wrapper.appendChild(content);
+        if (meta) {
+          const metaEl = document.createElement("div");
+          metaEl.className = "meta";
+          metaEl.textContent = meta;
+          wrapper.appendChild(metaEl);
+        }
+        messagesEl.appendChild(wrapper);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      function setError(message) {
+        errorEl.textContent = message || "";
+      }
+
+      async function loadConfig() {
+        const response = await fetch("/api/config/public");
+        if (!response.ok) {
+          throw new Error("Failed to load public configuration.");
+        }
+        state.config = await response.json();
+      }
+
+      async function initializeAuth() {
+        if (state.config.allowAnonymous) {
+          authModeEl.textContent = "Anonymous local mode";
+          loginBtn.disabled = true;
+          return;
+        }
+
+        authModeEl.textContent = "Sign in required";
+        const tenantId = state.config.tenantId;
+        const clientId = state.config.clientId;
+        if (!tenantId || !clientId) {
+          throw new Error("Entra settings are missing in /api/config/public.");
+        }
+
+        const authority = `https://login.microsoftonline.com/${tenantId}`;
+        state.msal = new msal.PublicClientApplication({
+          auth: {
+            clientId,
+            authority,
+            redirectUri: window.location.origin,
+          },
+          cache: {
+            cacheLocation: "sessionStorage",
+          },
+        });
+
+        // Required for newer MSAL browser internals before calling token APIs.
+        if (typeof state.msal.initialize === "function") {
+          await state.msal.initialize();
+        }
+
+        const activeAccount = state.msal.getActiveAccount();
+        if (activeAccount) {
+          state.account = activeAccount;
+        }
+
+        const accounts = state.msal.getAllAccounts();
+        if (accounts.length > 0) {
+          state.account = state.account || accounts[0];
+          state.msal.setActiveAccount(state.account);
+          await ensureIdToken(false);
+          authModeEl.textContent = `Signed in: ${state.account.username}`;
+        }
+      }
+
+      async function ensureIdToken(interactiveFallback = true) {
+        if (!state.msal || !state.account) {
+          return null;
+        }
+
+        try {
+          const result = await state.msal.acquireTokenSilent({
+            account: state.account,
+            scopes: LOGIN_SCOPES,
+          });
+          state.idToken = result.idToken;
+          return state.idToken;
+        } catch (error) {
+          if (!interactiveFallback) {
+            return null;
+          }
+
+          const result = await state.msal.acquireTokenPopup({
+            account: state.account,
+            scopes: LOGIN_SCOPES,
+          });
+          state.idToken = result.idToken;
+          return state.idToken;
+        }
+      }
+
+      async function signIn() {
+        if (!state.msal) {
+          return;
+        }
+        const loginResult = await state.msal.loginPopup({ scopes: LOGIN_SCOPES });
+        state.account = loginResult.account;
+        state.msal.setActiveAccount(state.account);
+        state.idToken = loginResult.idToken;
+        if (!state.idToken) {
+          await ensureIdToken(true);
+        }
+        authModeEl.textContent = `Signed in: ${state.account.username}`;
+      }
+
+      function authHeaders() {
+        const headers = { "Content-Type": "application/json" };
+        if (state.idToken) {
+          headers.Authorization = `Bearer ${state.idToken}`;
+        }
+        return headers;
+      }
+
+      async function ensureSession() {
+        if (state.sessionId) {
+          return state.sessionId;
+        }
+
+        if (!state.config.allowAnonymous) {
+          if (!state.account) {
+            await signIn();
+          }
+          await ensureIdToken(true);
+          if (!state.idToken) {
+            throw new Error("You must sign in before starting a chat session.");
+          }
+        }
+
+        const response = await fetch("/api/chat/session", {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({}),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`Failed to create session: ${text}`);
+        }
+        const session = await response.json();
+        state.sessionId = session.session_id;
+        sessionIdEl.textContent = `Session: ${state.sessionId}`;
+        return state.sessionId;
+      }
+
+      async function sendMessage(message) {
+        setError("");
+        sendBtn.disabled = true;
+        try {
+          const sessionId = await ensureSession();
+          if (!state.config.allowAnonymous) {
+            await ensureIdToken(true);
+          }
+
+          addMessage("user", message);
+
+          const response = await fetch("/api/chat/message", {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({ session_id: sessionId, message }),
+          });
+
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Chat request failed: ${text}`);
+          }
+
+          const body = await response.json();
+          const meta = body.policy_source ? `Routed via ${body.policy_source}` : "Routed via unknown policy";
+          addMessage("assistant", body.assistant_response, meta);
+        } finally {
+          sendBtn.disabled = false;
+        }
+      }
+
+      document.getElementById("chat-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const message = messageInput.value.trim();
+        if (!message) {
+          return;
+        }
+        messageInput.value = "";
+        try {
+          await sendMessage(message);
+        } catch (error) {
+          setError(error.message || String(error));
+        }
+      });
+
+      loginBtn.addEventListener("click", async () => {
+        setError("");
+        try {
+          await signIn();
+        } catch (error) {
+          setError(`Sign in failed: ${error.message || error}`);
+        }
+      });
+
+      newSessionBtn.addEventListener("click", () => {
+        state.sessionId = null;
+        sessionIdEl.textContent = "Session: not started";
+        messagesEl.innerHTML = "";
+      });
+
+      (async () => {
+        try {
+          await loadConfig();
+          await initializeAuth();
+          addMessage(
+            "assistant",
+            "Hi. I can help with card services, fraud concerns, and refunds/disputes. Ask your question to begin."
+          );
+        } catch (error) {
+          setError(error.message || String(error));
+        }
+      })();
+    </script>
+  </body>
+</html>

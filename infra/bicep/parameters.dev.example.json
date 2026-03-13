@@ -1,0 +1,62 @@
+{
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "prefix": {
+      "value": "policychatbot"
+    },
+    "environmentName": {
+      "value": "dev"
+    },
+    "location": {
+      "value": "swedencentral"
+    },
+    "containerImage": {
+      "value": "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+    },
+    "foundryProjectEndpoint": {
+      "value": "https://<foundry-resource>.services.ai.azure.com/api/projects/<foundry-project>"
+    },
+    "foundryProjectName": {
+      "value": "<foundry-project-name>"
+    },
+    "foundryResourceName": {
+      "value": "<foundry-resource-name>"
+    },
+    "foundryWorkflowName": {
+      "value": "<workflow-name>"
+    },
+    "foundryWorkflowEndpoint": {
+      "value": ""
+    },
+    "foundryWorkflowApiVersion": {
+      "value": "2025-11-15-preview"
+    },
+    "foundryScope": {
+      "value": "https://ai.azure.com/.default"
+    },
+    "allowAnonymous": {
+      "value": false
+    },
+    "entraTenantId": {
+      "value": "<tenant-id>"
+    },
+    "entraClientId": {
+      "value": "<client-id>"
+    },
+    "entraAudience": {
+      "value": "<audience-or-client-id>"
+    },
+    "cosmosDatabaseName": {
+      "value": "policy-chatbot-db"
+    },
+    "cosmosSessionsContainerName": {
+      "value": "chat-sessions"
+    },
+    "cosmosMessagesContainerName": {
+      "value": "chat-messages"
+    },
+    "foundryApiKey": {
+      "value": ""
+    }
+  }
+}

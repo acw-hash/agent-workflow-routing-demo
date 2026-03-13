@@ -1,0 +1,509 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "18432855809988489148"
+    }
+  },
+  "parameters": {
+    "prefix": {
+      "type": "string",
+      "defaultValue": "abopolicy",
+      "metadata": {
+        "description": "Global resource prefix. Keep this short and lowercase."
+      }
+    },
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "dev",
+      "metadata": {
+        "description": "Environment label appended to resource names."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources."
+      }
+    },
+    "containerImage": {
+      "type": "string",
+      "defaultValue": "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest",
+      "metadata": {
+        "description": "Container image to deploy into Azure Container Apps."
+      }
+    },
+    "foundryProjectEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry project endpoint base URL in services.ai.azure.com format."
+      }
+    },
+    "foundryProjectName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry project name."
+      }
+    },
+    "foundryResourceName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry AI services resource name."
+      }
+    },
+    "foundryWorkflowName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry workflow name to invoke."
+      }
+    },
+    "foundryWorkflowEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry workflow endpoint URL for chatbot requests."
+      }
+    },
+    "foundryWorkflowApiVersion": {
+      "type": "string",
+      "defaultValue": "2025-11-15-preview",
+      "metadata": {
+        "description": "API version used for workflow invocation endpoint patterns."
+      }
+    },
+    "foundryScope": {
+      "type": "string",
+      "defaultValue": "https://ai.azure.com/.default",
+      "metadata": {
+        "description": "OAuth scope used by the app when requesting Foundry access tokens."
+      }
+    },
+    "allowAnonymous": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Allow unauthenticated chat requests. Keep false for Entra-protected environments."
+      }
+    },
+    "entraTenantId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Microsoft Entra tenant ID for access token validation."
+      }
+    },
+    "entraClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Client ID of the Entra application used by the web UI."
+      }
+    },
+    "entraAudience": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Audience/App ID URI expected on access tokens by the backend API."
+      }
+    },
+    "cosmosDatabaseName": {
+      "type": "string",
+      "defaultValue": "policy-chatbot-db",
+      "metadata": {
+        "description": "Cosmos DB database name for chat state."
+      }
+    },
+    "cosmosSessionsContainerName": {
+      "type": "string",
+      "defaultValue": "chat-sessions",
+      "metadata": {
+        "description": "Cosmos DB container for sessions, partitioned by user identity."
+      }
+    },
+    "cosmosMessagesContainerName": {
+      "type": "string",
+      "defaultValue": "chat-messages",
+      "metadata": {
+        "description": "Cosmos DB container for messages, partitioned by session ID."
+      }
+    },
+    "foundryApiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional Foundry API key. Leave empty when using managed identity."
+      }
+    }
+  },
+  "variables": {
+    "suffix": "[toLower(format('{0}-{1}', parameters('prefix'), parameters('environmentName')))]",
+    "containerAppName": "[toLower(format('{0}-chatbot', variables('suffix')))]",
+    "managedEnvironmentName": "[toLower(format('{0}-cae', variables('suffix')))]",
+    "logAnalyticsName": "[toLower(format('{0}-law', variables('suffix')))]",
+    "appInsightsName": "[toLower(format('{0}-appi', variables('suffix')))]",
+    "acrName": "[replace(toLower(format('{0}{1}acr', parameters('prefix'), parameters('environmentName'))), '-', '')]",
+    "cosmosName": "[toLower(format('{0}-cosmos', variables('suffix')))]",
+    "cosmosDataContributorRoleId": "00000000-0000-0000-0000-000000000002",
+    "acrPullRoleId": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+    "foundryApiSecret": "[if(empty(parameters('foundryApiKey')), createArray(), createArray(createObject('name', 'foundry-api-key', 'value', parameters('foundryApiKey'))))]",
+    "useAcrRegistry": "[contains(toLower(parameters('containerImage')), format('{0}.azurecr.io', toLower(variables('acrName'))))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('logAnalyticsName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "retentionInDays": 30,
+        "sku": {
+          "name": "PerGB2018"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('appInsightsName')]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2023-11-01-preview",
+      "name": "[variables('acrName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Basic"
+      },
+      "properties": {
+        "adminUserEnabled": true,
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2023-04-15",
+      "name": "[variables('cosmosName')]",
+      "location": "[parameters('location')]",
+      "kind": "GlobalDocumentDB",
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "enableAutomaticFailover": false,
+        "locations": [
+          {
+            "locationName": "[parameters('location')]",
+            "failoverPriority": 0
+          }
+        ],
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session"
+        },
+        "capabilities": [],
+        "disableLocalAuth": false,
+        "enableFreeTier": false,
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "2023-04-15",
+      "name": "[format('{0}/{1}', variables('cosmosName'), parameters('cosmosDatabaseName'))]",
+      "properties": {
+        "resource": {
+          "id": "[parameters('cosmosDatabaseName')]"
+        },
+        "options": {}
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2023-04-15",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosName'), parameters('cosmosDatabaseName'), parameters('cosmosSessionsContainerName'))]",
+      "properties": {
+        "resource": {
+          "id": "[parameters('cosmosSessionsContainerName')]",
+          "partitionKey": {
+            "paths": [
+              "/userId"
+            ],
+            "kind": "Hash"
+          },
+          "defaultTtl": 2592000
+        },
+        "options": {
+          "autoscaleSettings": {
+            "maxThroughput": 4000
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('cosmosName'), parameters('cosmosDatabaseName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2023-04-15",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosName'), parameters('cosmosDatabaseName'), parameters('cosmosMessagesContainerName'))]",
+      "properties": {
+        "resource": {
+          "id": "[parameters('cosmosMessagesContainerName')]",
+          "partitionKey": {
+            "paths": [
+              "/sessionId"
+            ],
+            "kind": "Hash"
+          },
+          "defaultTtl": 2592000,
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ],
+            "compositeIndexes": [
+              [
+                {
+                  "path": "/sessionId",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/createdAt",
+                  "order": "ascending"
+                }
+              ]
+            ]
+          }
+        },
+        "options": {
+          "autoscaleSettings": {
+            "maxThroughput": 4000
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('cosmosName'), parameters('cosmosDatabaseName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('managedEnvironmentName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName')), '2023-09-01').customerId]",
+            "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName')), '2023-09-01').primarySharedKey]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('containerAppName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', variables('managedEnvironmentName'))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8000,
+            "allowInsecure": false
+          },
+          "registries": "[if(variables('useAcrRegistry'), createArray(createObject('server', reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-11-01-preview').loginServer, 'username', listCredentials(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-11-01-preview').username, 'passwordSecretRef', 'acr-password')), createArray())]",
+          "secrets": "[concat(variables('foundryApiSecret'), if(variables('useAcrRegistry'), createArray(createObject('name', 'acr-password', 'value', listCredentials(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-11-01-preview').passwords[0].value)), createArray()))]"
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "policy-chatbot",
+              "image": "[parameters('containerImage')]",
+              "resources": {
+                "cpu": "[json('0.5')]",
+                "memory": "1Gi"
+              },
+              "env": [
+                {
+                  "name": "APP_ENV",
+                  "value": "[parameters('environmentName')]"
+                },
+                {
+                  "name": "ALLOW_ANONYMOUS",
+                  "value": "[string(parameters('allowAnonymous'))]"
+                },
+                {
+                  "name": "ENTRA_TENANT_ID",
+                  "value": "[parameters('entraTenantId')]"
+                },
+                {
+                  "name": "ENTRA_CLIENT_ID",
+                  "value": "[parameters('entraClientId')]"
+                },
+                {
+                  "name": "ENTRA_AUDIENCE",
+                  "value": "[parameters('entraAudience')]"
+                },
+                {
+                  "name": "FOUNDRY_PROJECT_ENDPOINT",
+                  "value": "[parameters('foundryProjectEndpoint')]"
+                },
+                {
+                  "name": "FOUNDRY_PROJECT_NAME",
+                  "value": "[parameters('foundryProjectName')]"
+                },
+                {
+                  "name": "FOUNDRY_RESOURCE_NAME",
+                  "value": "[parameters('foundryResourceName')]"
+                },
+                {
+                  "name": "FOUNDRY_WORKFLOW_NAME",
+                  "value": "[parameters('foundryWorkflowName')]"
+                },
+                {
+                  "name": "FOUNDRY_WORKFLOW_ENDPOINT",
+                  "value": "[parameters('foundryWorkflowEndpoint')]"
+                },
+                {
+                  "name": "FOUNDRY_WORKFLOW_API_VERSION",
+                  "value": "[parameters('foundryWorkflowApiVersion')]"
+                },
+                {
+                  "name": "FOUNDRY_SCOPE",
+                  "value": "[parameters('foundryScope')]"
+                },
+                {
+                  "name": "COSMOS_ENABLED",
+                  "value": "true"
+                },
+                {
+                  "name": "COSMOS_ENDPOINT",
+                  "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName')), '2023-04-15').documentEndpoint]"
+                },
+                {
+                  "name": "COSMOS_DATABASE",
+                  "value": "[parameters('cosmosDatabaseName')]"
+                },
+                {
+                  "name": "COSMOS_SESSIONS_CONTAINER",
+                  "value": "[parameters('cosmosSessionsContainerName')]"
+                },
+                {
+                  "name": "COSMOS_MESSAGES_CONTAINER",
+                  "value": "[parameters('cosmosMessagesContainerName')]"
+                },
+                {
+                  "name": "APPINSIGHTS_CONNECTION_STRING",
+                  "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+                },
+                {
+                  "name": "FOUNDRY_API_KEY",
+                  "value": "[parameters('foundryApiKey')]"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 3
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]",
+        "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName'))]",
+        "[resourceId('Microsoft.App/managedEnvironments', variables('managedEnvironmentName'))]"
+      ]
+    },
+    {
+      "condition": "[variables('useAcrRegistry')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.ContainerRegistry/registries/{0}', variables('acrName'))]",
+      "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), resourceId('Microsoft.App/containerApps', variables('containerAppName')), 'acrpull')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleId'))]",
+        "principalId": "[reference(resourceId('Microsoft.App/containerApps', variables('containerAppName')), '2024-03-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]",
+        "[resourceId('Microsoft.App/containerApps', variables('containerAppName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments",
+      "apiVersion": "2023-04-15",
+      "name": "[format('{0}/{1}', variables('cosmosName'), guid(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName')), resourceId('Microsoft.App/containerApps', variables('containerAppName')), 'cosmos-contributor'))]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.App/containerApps', variables('containerAppName')), '2024-03-01', 'full').identity.principalId]",
+        "roleDefinitionId": "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions', variables('cosmosName'), variables('cosmosDataContributorRoleId'))]",
+        "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/containerApps', variables('containerAppName'))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "containerAppName": {
+      "type": "string",
+      "value": "[variables('containerAppName')]"
+    },
+    "containerAppUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', variables('containerAppName')), '2024-03-01').configuration.ingress.fqdn)]"
+    },
+    "acrName": {
+      "type": "string",
+      "value": "[variables('acrName')]"
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-11-01-preview').loginServer]"
+    },
+    "cosmosAccountName": {
+      "type": "string",
+      "value": "[variables('cosmosName')]"
+    },
+    "managedEnvironmentId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.App/managedEnvironments', variables('managedEnvironmentName'))]"
+    }
+  }
+}
