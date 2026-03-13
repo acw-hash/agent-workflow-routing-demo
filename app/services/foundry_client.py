@@ -310,7 +310,8 @@ class FoundryWorkflowClient:
     async def _invoke_workflow_runs_api(
         self,
         client: httpx.AsyncClient,
-        headers: dict[str, str],
+        project_headers: dict[str, str],
+        workflow_headers: dict[str, str],
         user_query: str,
         session_id: str,
         history: list[dict[str, str]],
@@ -327,7 +328,7 @@ class FoundryWorkflowClient:
             client,
             "POST",
             f"{project_endpoint}/threads?api-version={self._assistants_api_version}",
-            headers,
+            project_headers,
             {},
         )
         thread_id = thread.get("id", "")
@@ -345,7 +346,7 @@ class FoundryWorkflowClient:
                     client,
                     "POST",
                     f"{project_endpoint}/threads/{thread_id}/messages?api-version={self._assistants_api_version}",
-                    headers,
+                    project_headers,
                     {"role": role, "content": content.strip()},
                 )
 
@@ -353,7 +354,7 @@ class FoundryWorkflowClient:
             client,
             "POST",
             f"{project_endpoint}/threads/{thread_id}/messages?api-version={self._assistants_api_version}",
-            headers,
+            project_headers,
             {"role": "user", "content": user_query},
         )
 
@@ -376,7 +377,7 @@ class FoundryWorkflowClient:
             client,
             "POST",
             runs_endpoint,
-            headers,
+            workflow_headers,
             {"assistant_id": workflow_id},
         )
 
@@ -396,7 +397,7 @@ class FoundryWorkflowClient:
                 client,
                 "GET",
                 f"{runs_endpoint.split('?')[0]}/{quote(run_id, safe='')}?api-version={quote(self._workflow_run_api_version(), safe='')}",
-                headers,
+                workflow_headers,
             )
             await asyncio.sleep(2)
         else:
@@ -406,7 +407,7 @@ class FoundryWorkflowClient:
             client,
             "GET",
             f"{project_endpoint}/threads/{thread_id}/messages?api-version={self._assistants_api_version}",
-            headers,
+            project_headers,
         )
         for item in messages.get("data", []):
             if item.get("role") != "assistant":
@@ -554,16 +555,21 @@ class FoundryWorkflowClient:
 
         timeout = httpx.Timeout(self._settings.foundry_timeout_seconds)
         if self._workflow_runs_ready():
+            project_scope = (self._settings.foundry_scope or "").strip()
             workflow_scope = (self._settings.foundry_workflow_scope or self._settings.foundry_scope).strip()
             try:
+                project_headers = await self._build_headers(scope=project_scope)
                 workflow_headers = await self._build_headers(scope=workflow_scope)
+                project_headers["Content-Type"] = "application/json"
+                project_headers["x-request-id"] = request_id
                 workflow_headers["Content-Type"] = "application/json"
                 workflow_headers["x-request-id"] = request_id
 
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     return await self._invoke_workflow_runs_api(
                         client=client,
-                        headers=workflow_headers,
+                        project_headers=project_headers,
+                        workflow_headers=workflow_headers,
                         user_query=user_query,
                         session_id=session_id,
                         history=history,

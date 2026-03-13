@@ -25,6 +25,9 @@
     "foundryWorkflowName": {
       "value": "<workflow-name>"
     },
+    "foundryWorkflowId": {
+      "value": "<workflow-id>"
+    },
     "foundryWorkflowEndpoint": {
       "value": ""
     },

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "9307498717516873971"
+      "templateHash": "18263629427523630374"
     }
   },
   "parameters": {
@@ -63,6 +63,13 @@
       "defaultValue": "",
       "metadata": {
         "description": "Foundry workflow name to invoke."
+      }
+    },
+    "foundryWorkflowId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional deployed Foundry workflow ID (for workflow runs API)."
       }
     },
     "foundryWorkflowEndpoint": {
@@ -395,7 +402,7 @@
                 },
                 {
                   "name": "FOUNDRY_WORKFLOW_ID",
-                  "value": "[parameters('foundryWorkflowName')]"
+                  "value": "[if(empty(parameters('foundryWorkflowId')), parameters('foundryWorkflowName'), parameters('foundryWorkflowId'))]"
                 },
                 {
                   "name": "FOUNDRY_WORKFLOW_ENDPOINT",

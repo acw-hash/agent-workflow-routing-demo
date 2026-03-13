@@ -37,6 +37,7 @@ A FastAPI chatbot that routes bank-policy questions (fraud, refunds/disputes, ca
 1. Copy `infra/bicep/parameters.dev.example.json` to `infra/bicep/parameters.dev.json`.
 2. Fill `infra/bicep/parameters.dev.json` with real values:
   - `foundryProjectEndpoint`, `foundryProjectName`, `foundryResourceName`, `foundryWorkflowName`
+  - `foundryWorkflowId` (recommended for workflow runs API; use deployed workflow ID like `wf_agent_...`)
   - optional explicit override: `foundryWorkflowEndpoint`
   - optional `foundryApiKey` (leave empty for managed identity)
 3. Ensure you are logged in: `az login`

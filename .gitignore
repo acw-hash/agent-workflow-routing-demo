@@ -7,3 +7,5 @@ infra/bicep/parameters.dev.json
 *.pyo
 *.pyd
 *.log
+*.docx
+*.doc

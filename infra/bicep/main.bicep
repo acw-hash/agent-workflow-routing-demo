@@ -24,6 +24,9 @@ param foundryResourceName string = ''
 @description('Foundry workflow name to invoke.')
 param foundryWorkflowName string = ''
 
+@description('Optional deployed Foundry workflow ID (for workflow runs API).')
+param foundryWorkflowId string = ''
+
 @description('Foundry workflow endpoint URL for chatbot requests.')
 param foundryWorkflowEndpoint string = ''
 
@@ -313,7 +316,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             }
             {
               name: 'FOUNDRY_WORKFLOW_ID'
-              value: foundryWorkflowName
+              value: empty(foundryWorkflowId)
+                ? foundryWorkflowName
+                : foundryWorkflowId
             }
             {
               name: 'FOUNDRY_WORKFLOW_ENDPOINT'
